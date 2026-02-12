@@ -7,3 +7,10 @@
 [2026-02-11 09:15:05] Admin server stopped.
 [2026-02-11 09:15:16] Admin server started on 0.0.0.0:9999
 [2026-02-11 09:15:45] Logs cleared.
+[2026-02-11 10:24:44] Server is already running.
+[2026-02-11 10:25:08] Server is already running.
+[2026-02-11 10:25:27] Admin server stopped.
+[2026-02-11 11:59:13] Logs cleared.
+[2026-02-11 11:59:57] Settings updated: 0.0.0.0:999
+[2026-02-11 12:00:02] Admin server started on 0.0.0.0:999
+[2026-02-11 12:00:09] Admin server stopped.
