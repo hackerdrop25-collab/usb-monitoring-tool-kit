@@ -278,12 +278,6 @@ Stop Server: Closes all connections and stops the server
 Connected Clients: Displays the number of currently connected clients
 Authenticated Clients: Shows how many clients have successfully authenticated
 
-ADMIN COMMANDS:
-- GET_STATS: Retrieve server statistics
-- GET_CLIENTS: List all connected clients
-- KICK:<IP>: Disconnect a specific client
-- BROADCAST:<MESSAGE>: Send message to all clients
-
 AUTHENTICATION:
 - Format: AUTH:<username>:<password>
 - Default credentials: admin / password123
