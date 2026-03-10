@@ -163,8 +163,10 @@ class AdminServer:
         try:
             while True:
                 entry = self.gui_queue.get_nowait()
+                self.app.log_area.config(state=tk.NORMAL)
                 self.app.log_area.insert(tk.END, entry + "\n")
                 self.app.log_area.see(tk.END)
+                self.app.log_area.config(state=tk.DISABLED)
         except queue.Empty:
             pass
         self.app.root.after(100, self.drain_gui_queue)
@@ -214,7 +216,7 @@ class AdminApp:
         self.notebook.add(self.logs_frame, text="Live Logs")
         
         self.log_area = scrolledtext.ScrolledText(self.logs_frame, width=130, height=25, 
-                                                   wrap=tk.WORD, state=tk.NORMAL, font=("Courier", 9))
+                                                   wrap=tk.WORD, state=tk.DISABLED, font=("Courier", 9))
         self.log_area.pack(padx=5, pady=5, fill=tk.BOTH, expand=True)
 
         # Tab 2: Controls
@@ -369,9 +371,12 @@ CLIENT MANAGEMENT:
         self.status_label.config(text="Status: Stopped", fg="#e74c3c")
 
     def clear_logs(self):
-        """Clear log display"""
-        self.log_area.delete("1.0", tk.END)
-        self.log_event("Logs cleared.")
+        """Clear log display with confirmation"""
+        if messagebox.askyesno("Confirm Clear", "Are you sure you want to clear the live log display?\nThis will not delete the log files."):
+            self.log_area.config(state=tk.NORMAL)
+            self.log_area.delete("1.0", tk.END)
+            self.log_area.config(state=tk.DISABLED)
+            self.log_event("Logs cleared from display.")
 
     def refresh_client_list(self):
         """Refresh the client list display"""
@@ -420,8 +425,10 @@ CLIENT MANAGEMENT:
         """Log an event with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"[{timestamp}] {message}"
+        self.log_area.config(state=tk.NORMAL)
         self.log_area.insert(tk.END, entry + "\n")
         self.log_area.see(tk.END)
+        self.log_area.config(state=tk.DISABLED)
         try:
             with open("admin_console_log.txt", "a", encoding="utf-8") as f:
                 f.write(entry + "\n")

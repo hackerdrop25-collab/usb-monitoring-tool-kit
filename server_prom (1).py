@@ -75,8 +75,10 @@ class AdminServer:
         try:
             while True:
                 entry = self.gui_queue.get_nowait()
+                self.app.log_area.config(state=tk.NORMAL)
                 self.app.log_area.insert(tk.END, entry + "\n")
                 self.app.log_area.see(tk.END)
+                self.app.log_area.config(state=tk.DISABLED)
         except queue.Empty:
             pass
         self.app.root.after(100, self.drain_gui_queue)
@@ -96,7 +98,7 @@ class AdminApp:
         title = tk.Label(self.root, text="USB Admin Monitoring Console", font=("Arial", 16, "bold"))
         title.pack(pady=10)
 
-        self.log_area = scrolledtext.ScrolledText(self.root, width=115, height=25, wrap=tk.WORD, state=tk.NORMAL)
+        self.log_area = scrolledtext.ScrolledText(self.root, width=115, height=25, wrap=tk.WORD, state=tk.DISABLED)
         self.log_area.pack(padx=10, pady=10)
 
         btn_frame = tk.Frame(self.root)
@@ -111,8 +113,10 @@ class AdminApp:
     def log_event(self, message):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"[{timestamp}] {message}"
+        self.log_area.config(state=tk.NORMAL)
         self.log_area.insert(tk.END, entry + "\n")
         self.log_area.see(tk.END)
+        self.log_area.config(state=tk.DISABLED)
         with open("admin_server_log.txt", "a", encoding="utf-8") as f:
             f.write(entry + "\n")
 
