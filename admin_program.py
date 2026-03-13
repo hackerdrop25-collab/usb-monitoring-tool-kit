@@ -6,6 +6,8 @@ from datetime import datetime
 import queue
 import json
 import os
+import psutil
+import time
 
 class AdminServer:
     """Server for admin console communication and monitoring"""
@@ -145,6 +147,40 @@ class AdminServer:
                     self.authenticated_clients.remove(addr)
                 self.app.log_event(f"Kicked client: {addr}")
                 break
+
+    def start_local_monitor(self):
+        """Start monitoring local USB drives"""
+        threading.Thread(target=self._monitor_local_drives, daemon=True).start()
+
+    def _monitor_local_drives(self):
+        """Poll psutil for local removable drive changes"""
+        last_drives = self._get_removable_drives()
+        while self.running:
+            try:
+                current_drives = self._get_removable_drives()
+                added = current_drives - last_drives
+                removed = last_drives - current_drives
+
+                for drive in added:
+                    self.app.log_event(f"LOCAL:[Detected] USB device connected at {drive}")
+                for drive in removed:
+                    self.app.log_event(f"LOCAL:[Removed] USB device disconnected from {drive}")
+
+                last_drives = current_drives
+            except Exception as e:
+                self.app.log_event(f"Local monitor error: {e}")
+            time.sleep(2)
+
+    def _get_removable_drives(self):
+        """Get a set of current removable drive mountpoints"""
+        removable = set()
+        try:
+            for part in psutil.disk_partitions(all=False):
+                if 'removable' in part.opts or 'cdrom' in part.opts:
+                    removable.add(part.mountpoint)
+        except:
+            pass
+        return removable
 
     def broadcast_message(self, message):
         """Broadcast message to all connected clients"""
@@ -363,6 +399,7 @@ CLIENT MANAGEMENT:
     def start_server(self):
         """Start the admin server"""
         self.server.start_server()
+        self.server.start_local_monitor()
         self.status_label.config(text="Status: Running", fg="#27ae60")
 
     def stop_server(self):
