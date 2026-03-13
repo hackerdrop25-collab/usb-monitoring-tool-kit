@@ -152,12 +152,13 @@ class AdminServer:
         """Start monitoring local USB activities (Drives & Ports)"""
         if not self.running:
             return
-        threading.Thread(target=self._monitor_local_drives, daemon=True).start()
+        self.app.log_event("LOCAL: Starting hardware port monitor...")
+        threading.Thread(target=self._monitor_local_hardware, daemon=True).start()
 
-    def _monitor_local_drives(self):
-        """Poll for local drive and USB device changes"""
+    def _monitor_local_hardware(self):
+        """Poll for local drive and all USB hardware changes"""
         last_drives = self._get_removable_drives()
-        last_usb_devices = self._get_all_usb_hubs()
+        last_usb_devices = self._get_all_usb_devices()
         
         while self.running:
             try:
@@ -171,22 +172,25 @@ class AdminServer:
                 for drive in removed_drives:
                     self.app.log_event(f"LOCAL:[STORAGE] Drive removed from {drive}")
 
-                # 2. Check for USB Port Activity (Data cables, Phones, etc.)
-                current_usb = self._get_all_usb_hubs()
-                added_usb = current_usb - last_usb_devices
-                removed_usb = last_usb_devices - current_usb
-
-                for dev_id in added_usb:
-                    name = self._get_usb_device_name(dev_id)
-                    self.app.log_event(f"LOCAL:[PORT] USB Device Inserted: {name}")
+                # 2. Check for USB Port Activity (All USB PnP Devices)
+                current_usb_info = self._get_all_usb_devices()
+                current_ids = set(current_usb_info.keys())
+                last_ids = set(last_usb_devices.keys())
                 
-                for dev_id in removed_usb:
-                    self.app.log_event(f"LOCAL:[PORT] USB Device Unplugged (ID: {dev_id[:30]}...)")
+                added_ids = current_ids - last_ids
+                removed_ids = last_ids - current_ids
+
+                for dev_id in added_ids:
+                    name = current_usb_info[dev_id]
+                    self.app.log_event(f"LOCAL:[PORT] USB Connection: {name}")
+                
+                for dev_id in removed_ids:
+                    name = last_usb_devices.get(dev_id, "Unknown Device")
+                    self.app.log_event(f"LOCAL:[PORT] USB Disconnection: {name}")
 
                 last_drives = current_drives
-                last_usb_devices = current_usb
-            except Exception as e:
-                # Avoid flooding logs if there's a transient error
+                last_usb_devices = current_usb_info
+            except Exception:
                 pass
             time.sleep(2)
 
@@ -201,33 +205,26 @@ class AdminServer:
             pass
         return removable
 
-    def _get_all_usb_hubs(self):
-        """Get a set of all USB device IDs via WMIC"""
-        devices = set()
+    def _get_all_usb_devices(self):
+        """Get a dict of all USB PnP devices {DeviceID: Name}"""
+        devices = {}
         try:
-            # Using os.popen for a quick wmic call
-            with os.popen('wmic path Win32_USBHub get DeviceID') as pipe:
-                for line in pipe:
+            # Query PnPEntity for all devices starting with USB
+            cmd = 'wmic path Win32_PnPEntity where "PNPDeviceID like \'USB%\'" get Name,PNPDeviceID'
+            with os.popen(cmd) as pipe:
+                lines = pipe.readlines()
+                for line in lines[1:]:  # Skip header
                     line = line.strip()
-                    if line and "DeviceID" not in line:
-                        devices.add(line)
+                    if not line: continue
+                    # WMIC output is typically fixed-width or space-separated. 
+                    # We'll try to split from the right for the DeviceID
+                    parts = line.rsplit(None, 1)
+                    if len(parts) == 2:
+                        name, pnp_id = parts
+                        devices[pnp_id] = name
         except:
             pass
         return devices
-
-    def _get_usb_device_name(self, device_id):
-        """Lookup friendly name for a device ID"""
-        try:
-            # Escape backslashes for WMI query
-            escaped_id = device_id.replace('\\', '\\\\')
-            cmd = f'wmic path Win32_USBHub where "DeviceID=\'{escaped_id}\'" get Name'
-            with os.popen(cmd) as pipe:
-                lines = pipe.readlines()
-                if len(lines) > 1:
-                    return lines[1].strip()
-        except:
-            pass
-        return "Unknown USB Device"
 
     def broadcast_message(self, message):
         """Broadcast message to all connected clients"""

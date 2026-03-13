@@ -19,3 +19,7 @@
 [2026-03-13 12:19:28] Admin server stopped.
 [2026-03-13 12:22:20] Admin server started on 0.0.0.0:9999
 [2026-03-13 12:22:35] Admin server stopped.
+[2026-03-13 12:43:12] Admin server started on 0.0.0.0:9999
+[2026-03-13 12:59:35] Server is already running.
+[2026-03-13 12:59:42] Admin server stopped.
+[2026-03-13 12:59:44] Admin server stopped.
