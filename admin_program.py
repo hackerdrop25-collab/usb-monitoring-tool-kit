@@ -151,7 +151,8 @@ class AdminServer:
     def start_local_monitor(self):
         """Start monitoring local USB activities (Drives & Ports)"""
         if not self.running:
-            return
+            self.running = True # Ensure running is true if we start monitor independently
+        
         self.app.log_event("LOCAL: Starting hardware port monitor...")
         threading.Thread(target=self._monitor_local_hardware, daemon=True).start()
 
@@ -159,6 +160,9 @@ class AdminServer:
         """Poll for local drive and all USB hardware changes"""
         last_drives = self._get_removable_drives()
         last_usb_devices = self._get_all_usb_devices()
+        
+        # Initial update to dashboard
+        self.app.update_usb_dashboard(last_usb_devices)
         
         while self.running:
             try:
@@ -168,7 +172,7 @@ class AdminServer:
                 removed_drives = last_drives - current_drives
 
                 for drive in added_drives:
-                    self.app.log_event(f"LOCAL:[STORAGE] Pendrive detected at {drive}")
+                    self.app.log_event(f"LOCAL:[STORAGE] >>> PENDRIVE INSERTED at {drive} <<<")
                 for drive in removed_drives:
                     self.app.log_event(f"LOCAL:[STORAGE] Drive removed from {drive}")
 
@@ -180,19 +184,22 @@ class AdminServer:
                 added_ids = current_ids - last_ids
                 removed_ids = last_ids - current_ids
 
+                if added_ids or removed_ids:
+                    self.app.update_usb_dashboard(current_usb_info)
+
                 for dev_id in added_ids:
                     name = current_usb_info[dev_id]
-                    self.app.log_event(f"LOCAL:[PORT] USB Connection: {name}")
+                    self.app.log_event(f"LOCAL:[PORT] >>> USB INSERTED: {name} <<<")
                 
                 for dev_id in removed_ids:
                     name = last_usb_devices.get(dev_id, "Unknown Device")
-                    self.app.log_event(f"LOCAL:[PORT] USB Disconnection: {name}")
+                    self.app.log_event(f"LOCAL:[PORT] USB DISCONNECTED: {name}")
 
                 last_drives = current_drives
                 last_usb_devices = current_usb_info
-            except Exception:
-                pass
-            time.sleep(2)
+            except Exception as e:
+                self.app.log_event(f"Error in hardware monitor: {e}")
+            time.sleep(1) # Faster polling for better responsiveness
 
     def _get_removable_drives(self):
         """Get a set of current removable drive mountpoints"""
@@ -309,7 +316,12 @@ class AdminApp:
         self.notebook.add(self.client_frame, text="Client Management")
         self._create_client_tab()
 
-        # Tab 4: Settings
+        # Tab 4: USB Dashboard
+        self.usb_dash_frame = tk.Frame(self.notebook)
+        self.notebook.add(self.usb_dash_frame, text="USB Dashboard")
+        self._create_usb_dash_tab()
+
+        # Tab 5: Settings
         self.settings_frame = tk.Frame(self.notebook)
         self.notebook.add(self.settings_frame, text="Settings")
         self._create_settings_tab()
@@ -487,6 +499,46 @@ CLIENT MANAGEMENT:
             self.log_event(f"Settings updated: {host}:{port}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings: {e}")
+
+    def _create_usb_dash_tab(self):
+        """Create a dedicated USB monitoring dashboard"""
+        frame = tk.Frame(self.usb_dash_frame)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        header = tk.Label(frame, text="Connected USB Devices Dashboard", font=("Arial", 14, "bold"), fg="#2980b9")
+        header.pack(pady=5)
+
+        # Create Treeview for USB devices
+        columns = ("name", "id")
+        self.usb_tree = ttk.Treeview(frame, columns=columns, show="headings")
+        self.usb_tree.heading("name", text="Device Name")
+        self.usb_tree.heading("id", text="PNP Device ID")
+        self.usb_tree.column("name", width=300)
+        self.usb_tree.column("id", width=500)
+        
+        scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL, command=self.usb_tree.yview)
+        self.usb_tree.configure(yscroll=scrollbar.set)
+        
+        self.usb_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.usb_count_label = tk.Label(frame, text="Total USB Devices Detected: 0", font=("Arial", 10, "italic"))
+        self.usb_count_label.pack(side=tk.BOTTOM, pady=5)
+
+    def update_usb_dashboard(self, devices):
+        """Update the USB treeview with current devices"""
+        # Use root.after to ensure thread safety for GUI updates
+        self.root.after(0, self._sync_usb_dashboard, devices)
+
+    def _sync_usb_dashboard(self, devices):
+        """Internal helper for thread-safe GUI update"""
+        for item in self.usb_tree.get_children():
+            self.usb_tree.delete(item)
+        
+        for pnp_id, name in devices.items():
+            self.usb_tree.insert("", tk.END, values=(name, pnp_id))
+        
+        self.usb_count_label.config(text=f"Total USB Devices Detected: {len(devices)}")
 
     def update_credentials(self):
         """Update admin credentials"""
