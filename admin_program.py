@@ -149,26 +149,45 @@ class AdminServer:
                 break
 
     def start_local_monitor(self):
-        """Start monitoring local USB drives"""
+        """Start monitoring local USB activities (Drives & Ports)"""
+        if not self.running:
+            return
         threading.Thread(target=self._monitor_local_drives, daemon=True).start()
 
     def _monitor_local_drives(self):
-        """Poll psutil for local removable drive changes"""
+        """Poll for local drive and USB device changes"""
         last_drives = self._get_removable_drives()
+        last_usb_devices = self._get_all_usb_hubs()
+        
         while self.running:
             try:
+                # 1. Check for Removable Drives (Pendrives)
                 current_drives = self._get_removable_drives()
-                added = current_drives - last_drives
-                removed = last_drives - current_drives
+                added_drives = current_drives - last_drives
+                removed_drives = last_drives - current_drives
 
-                for drive in added:
-                    self.app.log_event(f"LOCAL:[Detected] USB device connected at {drive}")
-                for drive in removed:
-                    self.app.log_event(f"LOCAL:[Removed] USB device disconnected from {drive}")
+                for drive in added_drives:
+                    self.app.log_event(f"LOCAL:[STORAGE] Pendrive detected at {drive}")
+                for drive in removed_drives:
+                    self.app.log_event(f"LOCAL:[STORAGE] Drive removed from {drive}")
+
+                # 2. Check for USB Port Activity (Data cables, Phones, etc.)
+                current_usb = self._get_all_usb_hubs()
+                added_usb = current_usb - last_usb_devices
+                removed_usb = last_usb_devices - current_usb
+
+                for dev_id in added_usb:
+                    name = self._get_usb_device_name(dev_id)
+                    self.app.log_event(f"LOCAL:[PORT] USB Device Inserted: {name}")
+                
+                for dev_id in removed_usb:
+                    self.app.log_event(f"LOCAL:[PORT] USB Device Unplugged (ID: {dev_id[:30]}...)")
 
                 last_drives = current_drives
+                last_usb_devices = current_usb
             except Exception as e:
-                self.app.log_event(f"Local monitor error: {e}")
+                # Avoid flooding logs if there's a transient error
+                pass
             time.sleep(2)
 
     def _get_removable_drives(self):
@@ -181,6 +200,34 @@ class AdminServer:
         except:
             pass
         return removable
+
+    def _get_all_usb_hubs(self):
+        """Get a set of all USB device IDs via WMIC"""
+        devices = set()
+        try:
+            # Using os.popen for a quick wmic call
+            with os.popen('wmic path Win32_USBHub get DeviceID') as pipe:
+                for line in pipe:
+                    line = line.strip()
+                    if line and "DeviceID" not in line:
+                        devices.add(line)
+        except:
+            pass
+        return devices
+
+    def _get_usb_device_name(self, device_id):
+        """Lookup friendly name for a device ID"""
+        try:
+            # Escape backslashes for WMI query
+            escaped_id = device_id.replace('\\', '\\\\')
+            cmd = f'wmic path Win32_USBHub where "DeviceID=\'{escaped_id}\'" get Name'
+            with os.popen(cmd) as pipe:
+                lines = pipe.readlines()
+                if len(lines) > 1:
+                    return lines[1].strip()
+        except:
+            pass
+        return "Unknown USB Device"
 
     def broadcast_message(self, message):
         """Broadcast message to all connected clients"""
