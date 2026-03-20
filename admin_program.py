@@ -160,9 +160,11 @@ class AdminServer:
         """Poll for local drive and all USB hardware changes"""
         last_drives = self._get_removable_drives()
         last_usb_devices = self._get_all_usb_devices()
+        last_wpd_devices = self._get_wpd_devices()
         
         # Initial update to dashboard
-        self.app.update_usb_dashboard(last_usb_devices)
+        all_initial = {**last_usb_devices, **last_wpd_devices}
+        self.app.update_usb_dashboard(all_initial)
         
         while self.running:
             try:
@@ -185,7 +187,8 @@ class AdminServer:
                 removed_ids = last_ids - current_ids
 
                 if added_ids or removed_ids:
-                    self.app.update_usb_dashboard(current_usb_info)
+                    # Dashboard will be updated below along with WPD
+                    pass
 
                 for dev_id in added_ids:
                     name = current_usb_info[dev_id]
@@ -194,12 +197,53 @@ class AdminServer:
                 for dev_id in removed_ids:
                     name = last_usb_devices.get(dev_id, "Unknown Device")
                     self.app.log_event(f"LOCAL:[PORT] USB DISCONNECTED: {name}")
+                    
+                # 3. Check for Mobile Phones (WPD Devices)
+                current_wpd = self._get_wpd_devices()
+                current_wpd_ids = set(current_wpd.keys())
+                last_wpd_ids = set(last_wpd_devices.keys())
+
+                added_wpd = current_wpd_ids - last_wpd_ids
+                removed_wpd = last_wpd_ids - current_wpd_ids
+
+                for dev_id in added_wpd:
+                    name = current_wpd[dev_id]
+                    self.app.log_event(f"LOCAL:[MOBILE] >>> MOBILE / MTP DEVICE CONNECTED: {name} <<<")
+                
+                for dev_id in removed_wpd:
+                    name = last_wpd_devices.get(dev_id, "Unknown Mobile")
+                    self.app.log_event(f"LOCAL:[MOBILE] MOBILE DISCONNECTED: {name}")
+
+                if added_ids or removed_ids or added_wpd or removed_wpd:
+                    all_devices = {**current_usb_info, **current_wpd}
+                    self.app.update_usb_dashboard(all_devices)
 
                 last_drives = current_drives
                 last_usb_devices = current_usb_info
+                last_wpd_devices = current_wpd
             except Exception as e:
                 self.app.log_event(f"Error in hardware monitor: {e}")
             time.sleep(1) # Faster polling for better responsiveness
+
+    def _get_wpd_devices(self):
+        """Get a dict of all Portable Devices (Mobile Phones)"""
+        devices = {}
+        try:
+            cmd = 'wmic path Win32_PnPEntity where "PNPClass=\'WPD\'" get Name,PNPDeviceID'
+            with os.popen(cmd) as pipe:
+                lines = pipe.readlines()
+                for line in lines[1:]:
+                    line = line.strip()
+                    if not line: continue
+                    parts = line.rsplit(None, 1)
+                    if len(parts) == 2:
+                        name, pnp_id = parts
+                        if "USB" not in pnp_id: # Avoid duplicates if already in USB list
+                            pnp_id = "WPD_" + pnp_id 
+                        devices[pnp_id] = f"[MOBILE] {name}"
+        except:
+            pass
+        return devices
 
     def _get_removable_drives(self):
         """Get a set of current removable drive mountpoints"""
