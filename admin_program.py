@@ -226,10 +226,11 @@ class AdminServer:
             time.sleep(1) # Faster polling for better responsiveness
 
     def _get_wpd_devices(self):
-        """Get a dict of all Portable Devices (Mobile Phones)"""
+        """Get a dict of all Portable Devices (Mobile Phones & Cameras)"""
         devices = {}
         try:
-            cmd = 'wmic path Win32_PnPEntity where "PNPClass=\'WPD\'" get Name,PNPDeviceID'
+            # Broadened exact query to catch Androids, iPhones (Image), and WPD (MTP)
+            cmd = 'wmic path Win32_PnPEntity where "PNPClass=\'WPD\' OR PNPClass=\'AndroidUsbDeviceClass\' OR PNPClass=\'Image\'" get Name,PNPDeviceID'
             with os.popen(cmd) as pipe:
                 lines = pipe.readlines()
                 for line in lines[1:]:
@@ -238,8 +239,13 @@ class AdminServer:
                     parts = line.rsplit(None, 1)
                     if len(parts) == 2:
                         name, pnp_id = parts
-                        if "USB" not in pnp_id: # Avoid duplicates if already in USB list
-                            pnp_id = "WPD_" + pnp_id 
+                        
+                        # Filter out internal webcams usually in Image class
+                        if "Webcam" in name or "camera" in name.lower():
+                            continue
+
+                        if "USB" not in pnp_id: 
+                            pnp_id = "MOBILE_" + pnp_id 
                         devices[pnp_id] = f"[MOBILE] {name}"
         except:
             pass
